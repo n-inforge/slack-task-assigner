@@ -9,109 +9,140 @@ const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN;
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
 
-// ✅ Formulario con Bootstrap y campos extra
-app.get("/", (req, res) => {
-  res.send(`
-    <!DOCTYPE html>
-    <html lang="es">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Crear Nueva Task</title>
-      <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    </head>
-    <body class="bg-light">
-      <div class="container mt-5">
-        <div class="card shadow-lg p-4">
-          <h2 class="text-center mb-4">Crear Nueva Task</h2>
-          <form action="/post-task" method="POST">
-            
-            <div class="mb-3">
-              <label class="form-label">Cliente</label>
-              <input type="text" class="form-control" name="cliente" required>
-            </div>
+// ✅ Endpoint del Global Shortcut: abrir modal
+app.post("/slack/shortcut", async (req, res) => {
+  const payload = JSON.parse(req.body.payload);
+  const triggerId = payload.trigger_id;
 
-            <div class="mb-3">
-              <label class="form-label">Proyecto en Jira</label>
-              <input type="text" class="form-control" name="proyecto" required>
-            </div>
+  // ✅ Respondemos 200 rápido a Slack
+  res.sendStatus(200);
 
-            <div class="mb-3">
-              <label class="form-label">Issue en Jira (opcional)</label>
-              <input type="text" class="form-control" name="issue">
-            </div>
+  // ✅ Definir el modal con todos los campos
+  const modalView = {
+    type: "modal",
+    callback_id: "submit_task_modal",
+    title: {
+      type: "plain_text",
+      text: "Nueva Tarea"
+    },
+    submit: {
+      type: "plain_text",
+      text: "Publicar"
+    },
+    close: {
+      type: "plain_text",
+      text: "Cancelar"
+    },
+    blocks: [
+      {
+        type: "input",
+        block_id: "cliente_block",
+        label: { type: "plain_text", text: "Cliente" },
+        element: { type: "plain_text_input", action_id: "cliente" }
+      },
+      {
+        type: "input",
+        block_id: "proyecto_block",
+        label: { type: "plain_text", text: "Proyecto en Jira" },
+        element: { type: "plain_text_input", action_id: "proyecto" }
+      },
+      {
+        type: "input",
+        block_id: "issue_block",
+        optional: true,
+        label: { type: "plain_text", text: "Issue en Jira (opcional)" },
+        element: { type: "plain_text_input", action_id: "issue" }
+      },
+      {
+        type: "input",
+        block_id: "descripcion_block",
+        label: { type: "plain_text", text: "Descripción" },
+        element: { type: "plain_text_input", multiline: true, action_id: "descripcion" }
+      },
+      {
+        type: "input",
+        block_id: "urgencia_block",
+        label: { type: "plain_text", text: "Urgencia" },
+        element: {
+          type: "static_select",
+          action_id: "urgencia",
+          options: [
+            { text: { type: "plain_text", text: "Baja" }, value: "Baja" },
+            { text: { type: "plain_text", text: "Media" }, value: "Media" },
+            { text: { type: "plain_text", text: "Alta" }, value: "Alta" }
+          ]
+        }
+      },
+      {
+        type: "input",
+        block_id: "estimado_block",
+        optional: true,
+        label: { type: "plain_text", text: "Estimado (opcional)" },
+        element: { type: "plain_text_input", action_id: "estimado" }
+      },
+      {
+        type: "input",
+        block_id: "canal_block",
+        label: { type: "plain_text", text: "Canal Slack (ej: #dev-taskboard)" },
+        element: { type: "plain_text_input", action_id: "canal" }
+      }
+    ]
+  };
 
-            <div class="mb-3">
-              <label class="form-label">Descripción</label>
-              <textarea class="form-control" name="descripcion" rows="3" required></textarea>
-            </div>
-
-            <div class="mb-3">
-              <label class="form-label">Urgencia</label>
-              <select class="form-select" name="urgencia" required>
-                <option value="Baja">Baja</option>
-                <option value="Media">Media</option>
-                <option value="Alta">Alta</option>
-              </select>
-            </div>
-
-            <div class="mb-3">
-              <label class="form-label">Estimado (opcional)</label>
-              <input type="text" class="form-control" name="estimado" placeholder="Ej: 4h">
-            </div>
-
-            <div class="mb-3">
-              <label class="form-label">Canal Slack (ej: #dev-taskboard)</label>
-              <input type="text" class="form-control" name="canal" required>
-            </div>
-
-            <div class="d-grid">
-              <button type="submit" class="btn btn-primary btn-lg">Publicar en Slack</button>
-            </div>
-          </form>
-        </div>
-      </div>
-      <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    </body>
-    </html>
-  `);
+  // ✅ Abrir el modal
+  await axios.post("https://slack.com/api/views.open", {
+    trigger_id: triggerId,
+    view: modalView
+  }, {
+    headers: {
+      Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
+      "Content-Type": "application/json"
+    }
+  });
 });
 
-// ✅ Publicar mensaje en Slack con TODOS los campos
-app.post("/post-task", async (req, res) => {
-  const { cliente, proyecto, issue, descripcion, urgencia, estimado, canal } = req.body;
+// ✅ Recibir el envío del modal
+app.post("/slack/interact", async (req, res) => {
+  const payload = JSON.parse(req.body.payload);
 
-  const cleanChannel = canal.replace('#', '').trim();
-  const issueText = issue ? `\n*Issue en Jira:* ${issue}` : "";
-  const estimadoText = estimado ? `\n*Estimado:* ${estimado}` : "";
+  if (payload.type === "view_submission" && payload.view.callback_id === "submit_task_modal") {
+    const values = payload.view.state.values;
 
-  const blocks = [
-    {
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: `🆕 *Nueva tarea disponible*\n*Cliente:* ${cliente}\n*Proyecto en Jira:* ${proyecto}${issueText}\n*Descripción:* ${descripcion}\n*Urgencia:* ${urgencia}${estimadoText}`
-      }
-    },
-    {
-      type: "actions",
-      elements: [
-        {
-          type: "button",
-          text: {
-            type: "plain_text",
-            text: "Me lo asigno"
-          },
-          style: "primary",
-          action_id: "assign_task"
+    const cliente = values.cliente_block.cliente.value;
+    const proyecto = values.proyecto_block.proyecto.value;
+    const issue = values.issue_block.issue.value || "";
+    const descripcion = values.descripcion_block.descripcion.value;
+    const urgencia = values.urgencia_block.urgencia.selected_option.value;
+    const estimado = values.estimado_block.estimado.value || "";
+    const canal = values.canal_block.canal.value.replace('#', '').trim();
+
+    const issueText = issue ? `\n*Issue en Jira:* ${issue}` : "";
+    const estimadoText = estimado ? `\n*Estimado:* ${estimado}` : "";
+
+    const blocks = [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `🆕 *Nueva tarea disponible*\n*Cliente:* ${cliente}\n*Proyecto en Jira:* ${proyecto}${issueText}\n*Descripción:* ${descripcion}\n*Urgencia:* ${urgencia}${estimadoText}`
         }
-      ]
-    }
-  ];
+      },
+      {
+        type: "actions",
+        elements: [
+          {
+            type: "button",
+            text: { type: "plain_text", text: "Me lo asigno" },
+            style: "primary",
+            action_id: "assign_task"
+          }
+        ]
+      }
+    ];
 
-  try {
-    const response = await axios.post("https://slack.com/api/chat.postMessage", {
-      channel: cleanChannel,
+    // ✅ Publicar la card en el canal
+    await axios.post("https://slack.com/api/chat.postMessage", {
+      channel: canal,
       text: "Nueva tarea disponible",
       blocks
     }, {
@@ -121,27 +152,20 @@ app.post("/post-task", async (req, res) => {
       }
     });
 
-    console.log("Slack API response:", response.data);
-
-    if (response.data.ok) {
-      res.send("✅ Task publicada en Slack");
-    } else {
-      res.send(`❌ Error: ${response.data.error}`);
-    }
-  } catch (error) {
-    console.error("Error enviando mensaje a Slack:", error.message);
-    res.status(500).send("❌ Error publicando en Slack");
+    res.send({ response_action: "clear" }); // Cierra el modal
+  } else {
+    res.sendStatus(200);
   }
 });
 
-// ✅ Manejar clic del botón (responder rápido para evitar timeout)
-app.post("/slack/interact", (req, res) => {
+// ✅ Botón "Me lo asigno"
+app.post("/slack/button", (req, res) => {
   const payload = JSON.parse(req.body.payload);
   const userId = payload.user.id;
   const messageTs = payload.message.ts;
   const channelId = payload.channel.id;
 
-  res.sendStatus(200); // ✅ Respuesta inmediata a Slack
+  res.sendStatus(200);
 
   const newBlocks = [
     {
@@ -163,14 +187,7 @@ app.post("/slack/interact", (req, res) => {
       Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
       "Content-Type": "application/json"
     }
-  }).then(() => {
-    console.log(`✅ Tarea asignada a <@${userId}>`);
-  }).catch(error => {
-    console.error("Error actualizando mensaje:", error.message);
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`Servidor corriendo en puerto ${PORT}`);
-});
-
+app.listen(PORT, () => console.log(`Servidor corriendo en puerto ${PORT}`));
