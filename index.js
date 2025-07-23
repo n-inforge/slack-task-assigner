@@ -9,19 +9,19 @@ const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN;
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
 
-// ✅ Ruta con formulario
+// ✅ Ruta con formulario web
 app.get("/", (req, res) => {
   res.send(`
     <h1>Crear Nueva Task</h1>
     <form action="/post-task" method="POST">
       <label>Cliente:</label><br>
-      <input type="text" name="cliente"><br><br>
+      <input type="text" name="cliente" required><br><br>
 
       <label>Proyecto en Jira:</label><br>
-      <input type="text" name="proyecto"><br><br>
+      <input type="text" name="proyecto" required><br><br>
 
       <label>Descripción:</label><br>
-      <textarea name="descripcion"></textarea><br><br>
+      <textarea name="descripcion" required></textarea><br><br>
 
       <label>Urgencia:</label><br>
       <select name="urgencia">
@@ -31,16 +31,19 @@ app.get("/", (req, res) => {
       </select><br><br>
 
       <label>Canal (ej: #dev-taskboard):</label><br>
-      <input type="text" name="canal"><br><br>
+      <input type="text" name="canal" required><br><br>
 
       <button type="submit">Publicar en Slack</button>
     </form>
   `);
 });
 
-// ✅ Publicar mensaje con botón
+// ✅ Publicar mensaje con botón en Slack
 app.post("/post-task", async (req, res) => {
   const { cliente, proyecto, descripcion, urgencia, canal } = req.body;
+
+  // Eliminamos el "#" si lo ponen
+  const cleanChannel = canal.replace('#', '').trim();
 
   const blocks = [
     {
@@ -66,18 +69,29 @@ app.post("/post-task", async (req, res) => {
     }
   ];
 
-  await axios.post("https://slack.com/api/chat.postMessage", {
-    channel: canal,
-    text: "Nueva tarea disponible",
-    blocks
-  }, {
-    headers: {
-      Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
-      "Content-Type": "application/json"
-    }
-  });
+  try {
+    const response = await axios.post("https://slack.com/api/chat.postMessage", {
+      channel: cleanChannel,
+      text: "Nueva tarea disponible",
+      blocks
+    }, {
+      headers: {
+        Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
+        "Content-Type": "application/json"
+      }
+    });
 
-  res.send("✅ Task publicada en Slack");
+    console.log("Slack API response:", response.data); // ✅ Log para debug
+
+    if (response.data.ok) {
+      res.send("✅ Task publicada en Slack");
+    } else {
+      res.send(`❌ Error: ${response.data.error}`);
+    }
+  } catch (error) {
+    console.error("Error enviando mensaje a Slack:", error.message);
+    res.status(500).send("❌ Error publicando en Slack");
+  }
 });
 
 // ✅ Manejar clic del botón
@@ -97,17 +111,21 @@ app.post("/slack/interact", async (req, res) => {
     }
   ];
 
-  await axios.post("https://slack.com/api/chat.update", {
-    channel: channelId,
-    ts: messageTs,
-    blocks: newBlocks,
-    text: "Tarea asignada"
-  }, {
-    headers: {
-      Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
-      "Content-Type": "application/json"
-    }
-  });
+  try {
+    await axios.post("https://slack.com/api/chat.update", {
+      channel: channelId,
+      ts: messageTs,
+      blocks: newBlocks,
+      text: "Tarea asignada"
+    }, {
+      headers: {
+        Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
+        "Content-Type": "application/json"
+      }
+    });
+  } catch (error) {
+    console.error("Error actualizando mensaje:", error.message);
+  }
 
   res.sendStatus(200);
 });
