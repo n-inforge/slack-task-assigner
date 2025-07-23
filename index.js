@@ -94,13 +94,17 @@ app.post("/post-task", async (req, res) => {
   }
 });
 
-// ✅ Manejar clic del botón
-app.post("/slack/interact", async (req, res) => {
+// ✅ Manejar clic del botón (responder rápido para evitar error)
+app.post("/slack/interact", (req, res) => {
   const payload = JSON.parse(req.body.payload);
   const userId = payload.user.id;
   const messageTs = payload.message.ts;
   const channelId = payload.channel.id;
 
+  // ✅ Responder a Slack inmediatamente para evitar timeout
+  res.sendStatus(200);
+
+  // ✅ Actualizamos mensaje en segundo plano
   const newBlocks = [
     {
       type: "section",
@@ -111,23 +115,21 @@ app.post("/slack/interact", async (req, res) => {
     }
   ];
 
-  try {
-    await axios.post("https://slack.com/api/chat.update", {
-      channel: channelId,
-      ts: messageTs,
-      blocks: newBlocks,
-      text: "Tarea asignada"
-    }, {
-      headers: {
-        Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
-        "Content-Type": "application/json"
-      }
-    });
-  } catch (error) {
+  axios.post("https://slack.com/api/chat.update", {
+    channel: channelId,
+    ts: messageTs,
+    blocks: newBlocks,
+    text: "Tarea asignada"
+  }, {
+    headers: {
+      Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
+      "Content-Type": "application/json"
+    }
+  }).then(() => {
+    console.log(`✅ Tarea asignada a <@${userId}>`);
+  }).catch(error => {
     console.error("Error actualizando mensaje:", error.message);
-  }
-
-  res.sendStatus(200);
+  });
 });
 
 app.listen(PORT, () => {
