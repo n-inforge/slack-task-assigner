@@ -9,48 +9,88 @@ const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN;
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
 
-// ✅ Ruta con formulario web
+// ✅ Formulario con Bootstrap y campos extra
 app.get("/", (req, res) => {
   res.send(`
-    <h1>Crear Nueva Task</h1>
-    <form action="/post-task" method="POST">
-      <label>Cliente:</label><br>
-      <input type="text" name="cliente" required><br><br>
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Crear Nueva Task</title>
+      <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    </head>
+    <body class="bg-light">
+      <div class="container mt-5">
+        <div class="card shadow-lg p-4">
+          <h2 class="text-center mb-4">Crear Nueva Task</h2>
+          <form action="/post-task" method="POST">
+            
+            <div class="mb-3">
+              <label class="form-label">Cliente</label>
+              <input type="text" class="form-control" name="cliente" required>
+            </div>
 
-      <label>Proyecto en Jira:</label><br>
-      <input type="text" name="proyecto" required><br><br>
+            <div class="mb-3">
+              <label class="form-label">Proyecto en Jira</label>
+              <input type="text" class="form-control" name="proyecto" required>
+            </div>
 
-      <label>Descripción:</label><br>
-      <textarea name="descripcion" required></textarea><br><br>
+            <div class="mb-3">
+              <label class="form-label">Issue en Jira (opcional)</label>
+              <input type="text" class="form-control" name="issue">
+            </div>
 
-      <label>Urgencia:</label><br>
-      <select name="urgencia">
-        <option value="Baja">Baja</option>
-        <option value="Media">Media</option>
-        <option value="Alta">Alta</option>
-      </select><br><br>
+            <div class="mb-3">
+              <label class="form-label">Descripción</label>
+              <textarea class="form-control" name="descripcion" rows="3" required></textarea>
+            </div>
 
-      <label>Canal (ej: #dev-taskboard):</label><br>
-      <input type="text" name="canal" required><br><br>
+            <div class="mb-3">
+              <label class="form-label">Urgencia</label>
+              <select class="form-select" name="urgencia" required>
+                <option value="Baja">Baja</option>
+                <option value="Media">Media</option>
+                <option value="Alta">Alta</option>
+              </select>
+            </div>
 
-      <button type="submit">Publicar en Slack</button>
-    </form>
+            <div class="mb-3">
+              <label class="form-label">Estimado (opcional)</label>
+              <input type="text" class="form-control" name="estimado" placeholder="Ej: 4h">
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">Canal Slack (ej: #dev-taskboard)</label>
+              <input type="text" class="form-control" name="canal" required>
+            </div>
+
+            <div class="d-grid">
+              <button type="submit" class="btn btn-primary btn-lg">Publicar en Slack</button>
+            </div>
+          </form>
+        </div>
+      </div>
+      <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    </body>
+    </html>
   `);
 });
 
-// ✅ Publicar mensaje con botón en Slack
+// ✅ Publicar mensaje en Slack con TODOS los campos
 app.post("/post-task", async (req, res) => {
-  const { cliente, proyecto, descripcion, urgencia, canal } = req.body;
+  const { cliente, proyecto, issue, descripcion, urgencia, estimado, canal } = req.body;
 
-  // Eliminamos el "#" si lo ponen
   const cleanChannel = canal.replace('#', '').trim();
+  const issueText = issue ? `\n*Issue en Jira:* ${issue}` : "";
+  const estimadoText = estimado ? `\n*Estimado:* ${estimado}` : "";
 
   const blocks = [
     {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `🆕 *Nueva tarea disponible*\n*Cliente:* ${cliente}\n*Proyecto:* ${proyecto}\n*Descripción:* ${descripcion}\n*Urgencia:* ${urgencia}`
+        text: `🆕 *Nueva tarea disponible*\n*Cliente:* ${cliente}\n*Proyecto en Jira:* ${proyecto}${issueText}\n*Descripción:* ${descripcion}\n*Urgencia:* ${urgencia}${estimadoText}`
       }
     },
     {
@@ -81,7 +121,7 @@ app.post("/post-task", async (req, res) => {
       }
     });
 
-    console.log("Slack API response:", response.data); // ✅ Log para debug
+    console.log("Slack API response:", response.data);
 
     if (response.data.ok) {
       res.send("✅ Task publicada en Slack");
@@ -94,17 +134,15 @@ app.post("/post-task", async (req, res) => {
   }
 });
 
-// ✅ Manejar clic del botón (responder rápido para evitar error)
+// ✅ Manejar clic del botón (responder rápido para evitar timeout)
 app.post("/slack/interact", (req, res) => {
   const payload = JSON.parse(req.body.payload);
   const userId = payload.user.id;
   const messageTs = payload.message.ts;
   const channelId = payload.channel.id;
 
-  // ✅ Responder a Slack inmediatamente para evitar timeout
-  res.sendStatus(200);
+  res.sendStatus(200); // ✅ Respuesta inmediata a Slack
 
-  // ✅ Actualizamos mensaje en segundo plano
   const newBlocks = [
     {
       type: "section",
@@ -135,3 +173,4 @@ app.post("/slack/interact", (req, res) => {
 app.listen(PORT, () => {
   console.log(`Servidor corriendo en puerto ${PORT}`);
 });
+
